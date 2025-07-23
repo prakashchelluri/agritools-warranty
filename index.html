@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriTools Warranty Claim Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 font-sans min-h-screen">
+    <div class="container mx-auto p-4 max-w-2xl">
+        <div class="bg-white rounded shadow p-6 mt-8">
+            <h1 class="text-2xl font-bold mb-2 text-green-700 flex items-center gap-2">
+                <i class="fas fa-tractor"></i> AgriTools Warranty Claim
+            </h1>
+            <p class="mb-6 text-gray-600">Submit your warranty claim for agricultural equipment. Please provide as much detail as possible and upload relevant images.</p>
+            <form id="claimForm" class="space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Your Name</label>
+                    <input type="text" id="name" class="w-full p-2 border rounded mt-1" placeholder="Enter your name" required>
+                </div>
+                <div>
+                    <label for="claim" class="block text-sm font-medium text-gray-700">Claim Description</label>
+                    <textarea id="claim" class="w-full p-2 border rounded mt-1" placeholder="Describe your issue..." rows="4" required></textarea>
+                </div>
+                <div>
+                    <label for="images" class="block text-sm font-medium text-gray-700">Upload Images (optional)</label>
+                    <input type="file" id="images" multiple accept="image/*" class="w-full p-2 border rounded mt-1">
+                </div>
+                <button type="submit" class="p-2 bg-green-600 text-white rounded w-full font-semibold hover:bg-green-700 transition">Submit Claim</button>
+            </form>
+            <div id="uploadStatus" class="mt-4 text-sm text-gray-600"></div>
+        </div>
+    </div>
+    <script>
+    // Cloudinary and Google Apps Script config
+    const CLOUDINARY_CLOUD_NAME = 'dizvzfxln';
+    const CLOUDINARY_UPLOAD_PRESET = 'unsigned_preset';
+    const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxQpKchAKZEystaMQvlA1PrHgR8vBs4x3pYUEcepcHZbHMs4G9J9dpiq9dWPt0MAt8vkA/exec';
+
+    function generateRequestId() {
+      return 'WTY-' + Math.floor(1000 + Math.random() * 9000);
+    }
+
+    async function uploadImageToCloudinary(file) {
+      const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.secure_url) return data.secure_url;
+      throw new Error("Cloudinary upload failed: " + (data.error && data.error.message ? data.error.message : 'Unknown error'));
+    }
+
+    document.getElementById('claimForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const claim = document.getElementById('claim').value.trim();
+      const images = document.getElementById('images').files;
+      const statusDiv = document.getElementById('uploadStatus');
+      statusDiv.textContent = "Uploading images...";
+
+      let imageUrls = [];
+      try {
+        for (let i = 0; i < images.length; i++) {
+          statusDiv.textContent = `Uploading image ${i+1} of ${images.length}...`;
+          const url = await uploadImageToCloudinary(images[i]);
+          imageUrls.push(url);
+        }
+        if (images.length > 0) {
+          statusDiv.textContent = "All images uploaded. Submitting claim...";
+        } else {
+          statusDiv.textContent = "Submitting claim...";
+        }
+      } catch (err) {
+        statusDiv.textContent = "Image upload failed: " + err.message;
+        return;
+      }
+
+      const requestId = generateRequestId();
+
+      // Send to Google Apps Script Web App
+      fetch(WEBAPP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          claim,
+          requestId,
+          imageUrls
+        })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        statusDiv.innerHTML = `<span class='text-green-700 font-semibold'>Claim submitted! Your Request ID: <span class='bg-green-100 px-2 py-1 rounded'>${requestId}</span></span>`;
+        document.getElementById('claimForm').reset();
+      })
+      .catch(err => {
+        statusDiv.textContent = "Failed to submit claim: " + err.message;
+      });
+    });
+    </script>
+</body>
+</html>
